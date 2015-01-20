@@ -1,0 +1,81 @@
+\chapter{Challenges}
+\label{chap:challenges}
+In the course of developing this serialization framework, numerous challenges were discovered during the background research and testing process. This chapter discusses those challenges. Chapter \ref{chap:framework} discusses the approach that was taken in the design of the serialization framework and the justification for that approach.
+
+\section{Supporting Non IEEE-754 Platforms}
+\label{sec:challenges_nonconforming_platforms}
+The original goal of this project was to develop a system that would have the ability to completely handle the serialization of floating-point numbers. When developing a portable framework, it is desirable that the end user be able to simply use the framework while minimizing the additional setup required as well as the necessary knowledge regarding the details of their platform. Unfortunately, it quickly became apparent that such a system was implausible.
+
+C++ does not define any requirements for how floating-point numbers are implemented (see Section~\ref{sec:background_cpp}), meaning that it is impossible to predict what floating-point format will be used by a given platform. Most applications developed on desktop/server platforms using x86 or x86-64 processors may be reasonably expected to use IEEE-754. However, C++ compilers are available on a wide variety of system architectures, making it impossible to know in advance all of the different floating-point formats that may be encountered, whether they are implemented with hardware support or via software libraries.
+
+In order to develop a portable framework, the developer must be required to know some information about the system configurations that their software will be used on, so that they may correctly interface with the framework. Serializing floating-point data in a standardized format (see Section~\ref{sec:framework_core}) requires the end user to provide the necessary code to convert the standardized floating-point data into a format compatible with the floating-point types used by their platform. It is also expected that some systems may lack the ability to represent IEEE-754 special values. Infinity and NaN are, after all, a result of the IEEE-754 requirement that computations must always continue, and floating-point formats without that requirement may not have a comparable construct. The framework must therefore have a mechanism to signal when special values are loaded, so that the developer may translate them to an equivalent value or, if unsupported, discard them entirely.
+
+\section{Identifying IEEE-754 Types}
+\label{sec:challenges_identifying_types}
+It is often necessary to identify the specific type of a floating-point value. ISO C++11 requires the \code{cmath} header of the Standard Library to implement several functions related to floating-point classification \cite{ISO-C++11}. \code{isnormal()}, \code{isnan()}, and \code{isinf()} may be used to determine if their respective parameters are normal numbers, NaN values, or infinity. The function \code{fpclassify()} may also be used; it returns an enumerated value indicating if the parameter is normal, subnormal (denormal), infinity, NaN, or an implementation-defined type that does not match one the IEEE-754 categories. However, it should be noted that the enumerated values returned by \code{fpclassify()} are implementation-defined, meaning that they require additional manipulation before they may be used in a portable manner.
+
+The above functionality is not available when using compilers that do not support the C++11 standard. Prior to C++11, many compilers implemented extensions to their libraries which added functions such as \code{isnan()}, \code{isinf()}, etc. There is no standardized way to detect the presence of these extensions short of manually implementing checks for specific compiler versions. Section~\ref{sec:framework_utilities} describes a set of utility functions that are provided by the framework to assist in the identification of floating-point types.
+
+\section{Not a Number}
+\label{sec:challenges_special values}
+The bit pattern that IEEE-754 defines to identify NaN values is not fixed (see Section~\ref{subsubsec:nan}). That is, any floating-point value that contains a biased exponent with all bits set and a non-zero fraction field will be recognized as NaN; the necessary bit pattern of the fraction field is not defined by the standard. Additionally, the fraction field of a NaN value may be used to encode implementation-specific data  which may be interpreted differently on various platforms. For example, on one platform a specific bit pattern may represent ``NaN caused by divide by zero.'' If this bit pattern is moved to another platform it will still be interpreted as NaN, however, it may take on a different meaning such as ``NaN caused by $\infty - \infty$.''
+
+Also complicating this problem is the distinction between Quiet and Signaling NaN values. The 2008 update to the IEEE-754 standard addresses this deficiency by requiring that the most significant digit of the fraction string be used to indicate the type of NaN value \cite{IEEE-754-2008}. Some platforms, however, have not yet adopted the updated standard. For example, Microsoft Visual C++ version 12 (Visual Studio 2013) operating on both Windows 7 and Windows 8 generates NaN values that do not conform to the IEEE-754-2008 standard (see Appendix~\ref{app:features}). Since conformance to the 2008 revision of the standard can not be assumed, it is therefore impossible to distinguish between Quiet and Signaling NaN values in a portable manner. As detailed in Section~\ref{sec:framework_core}, the framework will consider all NaN values to be QNaN so that this issue may be avoided.
+
+\section{Size of \code{long double} Values}
+\label{sec:challenges_ld_size}
+As detailed in Section~\ref{sec:background_ieee754}, the Extended Precision type used to implement \code{long double} is not defined to be a fixed size. There are in fact three common sizes that may be used for \code{long double}: 8, 10, or 16 bytes. The width of the \code{long double} type may vary depending on the available hardware floating-point unit, the operating system, or even on compiler settings.
+
+Conversions between the 10 and 16 byte formats are relatively easy. The two formats are identical except for the width of the fraction field (see Table~\ref{table:fp_types}), therefore a conversion from 10 to 16 bytes may be done by right-padding the fraction field with zeros to the appropriate width, while converting from 16 to 10 bytes requires dropping some bits from the fraction string.
+
+Conversion from the 8 byte format to either 10 or 16 bytes requires modification of the exponent field, as the formats have exponents of differing widths. If the value is normal, the biased exponent must be modified using the formula $E_{b} = E_{b} \pm (b_{\code{long double}} - b_{\code{double}})$, performing addition when the conversion is from 8 bytes to 10/16 bytes, or subtraction when converting from 10/16 to 8 bytes. If the value is denormal, infinity, or NaN, 8 byte to 10/16 byte conversions require the exponent field must be right padded to the correct width by duplicating the least significant digit of the exponent field; conversion from 10/16 byte to 8 byte formats require the exponent field to be trimmed to the correct width. In conversions of all value types, the fraction field must also be modified to the correct width by right-padding or removing extra digits using a round to nearest mode.
+
+An additional problem occurs in some implementations of the 10 byte type. Testing revealed that some implementations (see Appendix~\ref{app:features}) use a 10 byte \code{long double} type that is actually stored in 16 bytes of memory. In these situations \code{sizeof(long double)} will return 16, meaning that \code{sizeof(long double)} alone is insufficient to distinguish between the 10 and 16 byte types. As a solution to this issue, the algorithm shown in Listing~\ref{listing:10in16} was used. This algorithm sets a negative \code{long double} value and detects if the most significant bit is set, as would be expected for a true 16 byte value. Unfortunately testing also showed that some implementations of the 10 byte format using 16 bytes of storage make use of the additional bytes to store implementation-specific data whose purpose is unknown. In the systems observed during testing, the most significant bit of the storage was not used for storing additional information. If, however, an implementation did choose to use the most significant bit for extra information, it would invalidate this solution.
+
+\noindent
+\begin{minipage}{\linewidth}
+\begin{singlespace}
+\begin{lstlisting}[language={}, caption=An algorithm to detect 10 byte values that use 16 bytes of storage., label=listing:10in16]
+function detect_10_byte_format_in_16_byte_storage:
+    if long double size is not 16 bytes then
+        return false
+    end if
+
+    set a long double variable to -1
+    obtain the most significant bit of the variable
+    if the bit is 1 then
+        return false
+    else
+        return true
+    end if
+\end{lstlisting}
+\end{singlespace}
+\end{minipage}
+
+\section{x86 Extended Precision Format}
+\label{sec:challenges_x86_ext}
+
+\begin{table}
+  \centering
+  \caption{x86 Extended Precision explicit fraction bits.}
+  \label{table:x86_ext_fraction_msb}
+  \begin{tabular}{|l|l|}
+    \hline
+    \textbf{Value Type} & \textbf{Fraction msb} \\
+    \hline
+    Normal Numbers      & 1                     \\
+    \hline
+    Denormal Numbers    & 0                     \\
+    \hline
+    Infinity            & 1                     \\
+    \hline
+    Not a Number        & 1                     \\
+    \hline
+  \end{tabular}
+\end{table}
+
+Most sources indicate that a 10 byte \code{long double} may be expected to use the standard IEEE-754 format as described in Section \ref{subsec:fp_format}. However, additional research and practical testing determined that many 10 byte types do not strictly conform to the standard. Instead, they use the x86 Extended Precision floating-point format implemented by Intel x87 hardware floating-point units. This format is based on IEEE-754, but differs from the standard by requiring the most significant digit of the fraction to be explicitly encoded in the value as listed in Table~\ref{table:x86_ext_fraction_msb} \cite{Intel:DevManual}. The remainder of the fraction field conforms to the IEEE-754 standard.
+
+The explicitly encoded leading fraction digit causes numerous problems. When one treats x86 Extended Precision values as though they are standard IEEE-754 values, normal and denormal values will be calculated incorrectly because the explicit fraction MSB causes the fraction to be effectively divided by two. Infinity values will always be recognized as NaN due to the non-zero fraction field. Finally, NaN values will always be recognized as QNaN.
+
+Solutions to this issue are not trivial. Some possible approaches to handle this issue are addressed in Chapter~\ref{chap:conclusion}.

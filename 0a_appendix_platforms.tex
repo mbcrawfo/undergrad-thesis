@@ -1,0 +1,29 @@
+\chapter{Floating-Point Feature Tests}
+\label{app:features}
+During the research for this thesis a number of computers and operating systems were tested to determine the floating-point features of each platform. System information was queried in the following manner:
+
+\begin{description}
+  \item[Windows:] Operating system and version as well as CPU model number was taken from the ``System Information'' application.
+  \item[Mac OS X:] Operating system and version as well as CPU model number was taken from the ``About This Mac'' dialog.
+  \item[Linux:] Operating system and version was determined by running the terminal command \code{cat~/etc/*-release}. CPU model number was taken from the file \code{/proc/cpuinfo}.
+\end{description}
+
+All other information regarding floating-point features was determined by querying the \code{std::numeric\_limits} class that is included in the C++ Standard Library.
+
+\newpage
+\lstinputlisting[caption=Floating-point features of Windows 7., language={}, frame={}, numbers={none}]{reports/laptop_windows.txt}
+
+\newpage
+\lstinputlisting[caption=Floating-point features of Windows 8., language={}, frame={}, numbers={none}]{reports/tss_desktop.txt}
+
+\newpage
+\lstinputlisting[caption=Floating-point features of Mac OS X., language={}, frame={}, numbers={none}]{reports/tss_imac.txt}
+
+\newpage
+\lstinputlisting[caption=Floating-point features of Manjaro Linux on a virtual machine., language={}, frame={}, numbers={none}]{reports/laptop_linux_vm.txt}
+
+\newpage
+\lstinputlisting[caption=Floating-point features of CentOS Linux., language={}, frame={}, numbers={none}]{reports/pub2.txt}
+
+\newpage
+\lstinputlisting[caption=Floating-point features of Red Hat Linux., language={}, frame={}, numbers={none}]{reports/student.txt}

@@ -1,0 +1,121 @@
+\documentclass[11pt]{asu}
+
+\usepackage[]{graphics}
+\usepackage{graphicx}
+\usepackage{setspace}
+\usepackage{lscape}
+\usepackage{rotating}
+\usepackage{listings}
+\usepackage{url}
+\usepackage{courier}
+\usepackage{csquotes}
+\usepackage{fixltx2e}
+\usepackage{xinttools}
+\usepackage[]{algorithm2e}
+\usepackage[toc,page]{appendix}
+
+\newcounter{bitindex}
+
+\clubpenalty=5000
+\widowpenalty=5000
+\renewcommand\lstlistlistingname{List of Listings}
+\setlength{\belowcaptionskip}{.25in}
+
+%c++ listing box settings
+\lstset{language=C++,
+	numberstyle=\footnotesize,
+	basicstyle=\ttfamily\footnotesize,
+	morekeywords={uint8_t, uint16_t, uint32_t, uint64_t},
+	numbers=left,
+	stepnumber=1,
+	frame=single,
+	breaklines=true,
+  showstringspaces=false
+}
+
+%create image of a float showing each bit
+\newcommand{\floatimage}[3]{%
+  \setlength{\unitlength}{1mm}
+  \setlength{\fboxsep}{0mm}
+  \begin{picture}(130,16)
+    % sign bit
+  \put(2,4){\framebox(4,8){#1}}
+  % exponent
+  \setcounter{bitindex}{1}%
+  \xintFor* ##1 in {#2}
+  \do
+  {\put(\numexpr 2+4*\value{bitindex},4){\framebox(4,8){##1}}%
+   \stepcounter{bitindex}}%
+  % fraction
+  \setcounter{bitindex}{1}%
+  \xintFor* ##1 in {#3}
+  \do
+  {\put(\numexpr 34+4*\value{bitindex},4){\framebox(4,8){##1}}%
+   \stepcounter{bitindex}}%
+  % upper labels
+  \put(0,14){\scriptsize{MSB}}
+  \put(126,14){\scriptsize{LSB}}
+  %lower labels
+  \put(3,0){\scriptsize{S}}
+  \put(7,0){\line(0,1){2}}
+  \put(7,1){\vector(1,0){8}}
+  \put(16,0){\scriptsize{Exponent}}
+  \put(37,1){\vector(-1,0){8}}
+  \put(37,0){\line(0,1){2}}
+  \put(39,0){\line(0,1){2}}
+  \put(39,1){\vector(1,0){38}}
+  \put(79,0){\scriptsize{Fraction}}
+  \put(130,1){\vector(-1,0){38}}
+  \put(130,0){\line(0,1){2}}
+\end{picture}%
+}
+
+%inline code command, using courier font
+\newcommand{\code}[1]{\texttt{#1}}
+
+\title{A Portable C++ Framework for the Serialization of Floating-Point Numbers}
+\degree{Bachelor of Science}
+\department{Computer Science}
+\gradmonth{May}
+\gradyear{2014}
+\author{Michael Crawford}  
+\thesischair{Cindy Norris, Ph.D.}
+\thesismemberone{E. Frank Barry, M.Sc.}
+\thesismembertwo{Dee Parks, Ph.D.}
+\deptchair{James Wilkes, Ph.D.}
+\dean{Dean}
+
+\begin{document}
+	\begin{preliminary}
+		\maketitle
+        \makecopyright
+        \input{01_abstract.tex}
+		\tableofcontents
+        \listoftables
+        \listoffigures
+        \lstlistoflistings
+	\end{preliminary}
+
+	\newlinestretch{2}
+
+		\begin{doublespace}
+	    \input{02_introduction.tex}
+	    \input{03_background.tex}
+	    \input{04_challenges.tex}
+      \input{05_framework.tex}
+      \input{06_testing.tex}
+      \input{07_conclusion.tex}
+		\end{doublespace}
+
+	\newpage
+    \newlinestretch{1}
+	\addcontentsline{toc}{chapter}{Bibliography}
+    \bibliographystyle{plain}
+	\bibliography{bibliography}
+    \nocite{*}
+    \begin{appendices}
+      \begin{singlespace}
+        \input{0a_appendix_platforms.tex}
+      \end{singlespace}    
+    \end{appendices}
+\end{document}

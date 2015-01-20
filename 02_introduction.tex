@@ -1,0 +1,19 @@
+\chapter{Introduction}
+\label{chap:introduction}
+The ISO C++ Standard defines three floating-point types to be used for the representation of real numbers: \code{float}, \code{double}, and \code{long double}. However, the standard does not specify the storage size or binary representation used for these types. This ambiguity creates difficulties when a developer wishes to serialize floating-point values using a binary format that allows them to be successfully de-serialized on a variety of other systems.
+
+The most commonly used standard for floating-point values is the IEEE-754 Standard for Binary Floating-Point. However, this standard does not strictly define all aspects of its implementation. This means that even when the IEEE-754 standard is used, floating-point values can not be reliably serialized on one system that implements the standard and de-serialized on a different system implementing the same standard. Attempting to serialize values on an IEEE-754 system and de-serialize them on a non IEEE-754 (or the inverse) presents a more significant challenge.
+
+This thesis presents a framework that may be used to serialize floating-point values to a standardized format and de-serialize those values on a variety of platforms. Developers using this framework must still implement appropriate code to convert the framework's floating-point format to that of the systems that they are using. Though perhaps less than ideal, this represents a substantial improvement over the current situation in which a developer is required to deal with floating-point data that is in an ambiguous or even unknown format.
+
+Chapter~\ref{chap:background} of the thesis provides background information related to the implementation of floating-point in C++, as well as details related to the IEEE-754 standard and the format that it uses for the representation of floating-point values. Also discussed is the Boost Serialization Library, used by this thesis to provide the serialization backbone upon which the floating-point framework is implemented.
+
+Chapter~\ref{chap:challenges} provides additional detail regarding the challenges that must be addressed in order to serialize floating-point values successfully.
+
+Chapter~\ref{chap:framework} describes the proposed framework, the utilities provided to assist in using the framework, and demonstrates the usage of the framework.
+
+Chapter~\ref{chap:testing} discusses the testing that was done to verify the functionality of the framework utilities as well as the viability of the framework itself.
+
+Chapter~\ref{chap:conclusion} summarizes this framework and its potential applications, as well as discussing possible future work to improve upon the framework.
+
+Appendix~\ref{app:features} provides a listing of reports that detail the floating-point features of the systems used during testing.

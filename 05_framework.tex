@@ -1,0 +1,380 @@
+\chapter{Proposed Framework}
+\label{chap:framework}
+This chapter presents a framework to allow for the portable serialization of floating-point numbers that attempts to address the issues presented in Chapter \ref{chap:challenges}. In addition to the core framework, a number of helper utilities are provided, as well as details regarding integration with the Boost Serialization Library, and an example usage of the framework.
+
+\section{Framework Core}
+\label{sec:framework_core}
+The framework consists of two major components: a set of standards dictating how floating-point numbers will be serialized, and a pair of abstract base classes that provide the interface for serialization and de-serialization. Users of the framework must implement these interfaces so that the serialization implementation saves floating-point values in a manner compliant with the framework requirements, while the de-serialization implementation loads framework compliant values and converts them to a format compatible with the user's platform.
+
+\subsection{Serialization Standards}
+When using this framework, users shall adhere to the following standards to ensure that floating-point values may be saved and loaded in a consistent manner:
+
+\begin{enumerate}
+  \item Binary Representation
+  \begin{enumerate}
+    \item Within the framework, floating-point values shall always be treated as binary values. 
+    \begin{enumerate}
+      \item The types \code{float}, \code{double}, and \code{long double} shall only be used to obtain the representation when a value enters the framework before serialization, and to set the final floating-point number as the value leaves the framework following de-serialization. In other words, no floating-point instructions or casts are to be used in the serialization or de-serialization code. This ensures that the underlying bit pattern is only changed when desired by the developer.
+      
+      \item The type \code{uint32\_t} shall be used to hold the binary representation of a \code{float}, and the type \code{uint64\_t} shall be used to hold the binary representation of a \code{double}.
+      
+      \item Since \code{long double} may vary in size, its binary representation shall be held in 128 bits using a pair of \code{uint64\_t} values. True 128 bit integer types remain uncommon, therefore the choice of \code{uint64\_t[2]} ensures greater portability.
+    \end{enumerate}
+    
+    \item The integer types that hold the binary values shall be serialized using a byte ordering consistent with how the containing serialization library handles integer types. In this thesis, the Boost Serialization Library is used, and integer types are serialized using the built-in functionality of that library.
+    
+    \item When a \code{long double} is serialized, the integer representing the most significant portion of the binary value shall be written first, followed by the integer representing the least significant portion of the binary value.
+  \end{enumerate}
+  
+  \item Floating-Point Format
+  \begin{enumerate}
+    \item All values shall be serialized using a bit pattern that represents a value conforming to the appropriate IEEE-754 format. \code{long double} values shall always use the 128 bit Extended Double Precision format.
+    
+    \item Whenever possible, values shall be serialized as a normal number.
+    
+    \item Any number that falls within the range of IEEE-754 denormal values shall be serialized using a denormal number representation. Zero always uses a denormal representation.
+    
+    \item Any number that falls outside the range of IEEE-754 normal values shall be serialized as either $+\infty$ or $-\infty$.
+    
+    \item All NaN values shall be considered to be QNaN.
+    
+    \item During de-serialization, an implementation must recognize all denormal, infinity, and NaN values, and convert them to an appropriate format as required by the target floating-point format.
+    \begin{enumerate}
+      \item If a denormal value is detected during de-serialization and the target floating-point format does not support denormal values or is otherwise incapable of representing the value, the value shall be replaced with the target format's representation of zero.
+
+      \item When a NaN value is detected during de-serialization and the target floating-point format is IEEE-754, it is recommended to replace the loaded binary value with the target system's QNaN representation, obtained using the facilities of the C++ Standard Library\footnote{\code{std::numeric\_limits<T>::quiet\_NaN()}; \code{T} is the floating-point type.}.
+
+      \item If an infinity or NaN value is detected during de-serialization and the target floating-point format is incapable of representing either infinity or NaN, it is recommended to signal an error condition or to raise an exception. If de-serialization is allowed to continue, the value returned in place of infinity or NaN is implementation-defined.
+    \end{enumerate}    
+  \end{enumerate}
+\end{enumerate}
+
+\subsection{Serialization Interface}
+The abstract base class (interface) \code{FP\_Serializer}, shown in Listing~\ref{listing:framework_serializer}, provides the means by which the local floating-point type is converted to a binary value suitable for serialization. A serialization library using this framework shall require the user to provide an implementation of the \code{FP\_Serializer} interface before serialization begins.
+
+When the library encounters a floating-point value, it shall call the corresponding \code{convert()} method. The parameter \code{in} shall be the floating-point value to be serialized, passed using the floating-point format of the current platform. The implementation shall set the parameter \code{out} to be the binary value that will be serialized, conforming to the requirements listed above. The library shall then perform serialization of the integer value containing the binary representation stored in \code{out}.
+
+\noindent
+\begin{minipage}{\linewidth}
+\begin{singlespace}
+\begin{lstlisting}[caption=The \code{FP\_Serializer} interface., label=listing:framework_serializer]
+class FP_Serializer
+{
+public:
+    virtual ~FP_Serializer() {}
+    
+    virtual void convert(const float in, uint32_t& out) const = 0;
+    virtual void convert(const double in, uint64_t& out) const = 0;
+    virtual void convert(const long double in, LongDouble& out) const = 0;
+};
+\end{lstlisting}
+\end{singlespace}
+\end{minipage}
+
+\subsection{De-serialization Interface}
+The counterpart to \code{FP\_Serializer} is the abstract base class (interface) \code{FP\_Deserializer}, shown in Listing~\ref{listing:framework_deserializer}. It is used to convert the binary value loaded during de-serialization into a suitable floating-point value that is compatible with the current platform. A serialization library using this framework shall require the user to provide an implementation of the \code{FP\_Deserializer} interface before de-serialization begins.
+
+When the library receives a request that a floating-point value be loaded, it shall first de-serialize the appropriate integer type, which will contain the binary representation of the floating-point value. This integer shall then be passed to the appropriate \code{convert()} method as the parameter \code{in}. The \code{convert()} method determines what type of floating-point value the \code{in} parameter represents, and calls the appropriate method to handle the conversion of the loaded type. Four methods are provided for each type: \code{loadedNorm()}, \code{loadedDenorm()}, \code{loadedNan()}, \code{loadedInf()}. Each method takes a single parameter, which is the binary representation of the loaded value, performs a conversion of the binary representation to the appropriate floating-point type. This floating-point value shall then be assigned to the \code{out} parameter of the \code{convert()} method.
+
+Note that it is not strictly necessary to implement all five ``loaded'' methods for each type. For example, the binary representation of a \code{float} specified by this framework may be converted directly to the \code{float} type of a platform that conforms to IEEE-754 (see Section~\ref{sec:framework_example}). However, even in that case it is still recommended to implement \code{loadedNan()}, as previously discussed.
+
+\noindent
+\begin{minipage}{\linewidth}
+\begin{singlespace}
+\begin{lstlisting}[caption=The \code{FP\_Deserializer} interface., label=listing:framework_deserializer]
+class FP_Deserializer
+{
+public:
+    virtual ~FP_Deserializer() {}
+    
+    virtual void convert(const uint32_t in, float& out) const = 0;
+    virtual float loadedNorm(const uint32_t v) const = 0;
+    virtual float loadedDenorm(const uint32_t v) const = 0;
+    virtual float loadedNan(const uint32_t v) const = 0;
+    virtual float loadedInf(const uint32_t v) const = 0;
+    
+    virtual void convert(const uint64_t in, double& out) const = 0;
+    virtual double loadedNorm(const uint64_t v) const = 0;
+    virtual double loadedDenorm(const uint64_t v) const = 0;
+    virtual double loadedNan(const uint64_t v) const = 0;
+    virtual double loadedInf(const uint64_t v) const = 0;
+
+    virtual void convert(const LongDouble in, long double& out) const = 0;
+    virtual long double loadedNorm(const LongDouble v) const = 0;
+    virtual long double loadedDenorm(const LongDouble v) const = 0;
+    virtual long double loadedNan(const LongDouble v) const = 0;
+    virtual long double loadedInf(const LongDouble v) const = 0;
+};
+\end{lstlisting}
+\end{singlespace}
+\end{minipage}
+
+\section{Provided Utilities}
+\label{sec:framework_utilities}
+To facilitate the identification and conversion of floating-point types within implementations of \code{FP\_Serializer} and \code{FP\_Deserializer}, a set of utility functions and values are provided as part of the framework.
+
+\subsection{Floating-Point Field Masks}
+A number of integer constants are supplied that implementations may use when manipulating floating-point numbers as binary values. These constants are shown in Listing~\ref{listing:framework_masks}. Masks are supplied for the 32, 64, and 128 bit types that are used for serialization within the framework. For each type, five constants are provided:
+
+\begin{description}
+  \item[\code{biasN} :] The bias for the type, as listed in Table~\ref{table:fp_types}.
+  \item[\code{signMaskN} :] A mask that may be used to obtain the sign bit for the type.
+  \item[\code{exponentMaskN} :] A mask that may be used to obtain the exponent field for the type.
+  \item[\code{fractionMaskN} :] A mask that may be used to obtain the fraction field for the type.
+  \item[\code{nanTypeMaskN} :] A mask that may be used to obtain the QNaN/SNaN flag bit if the type conforms to IEEE-754-2008.
+\end{description}
+
+In the name of the constant, \code{N} indicates the size of the type, in bits. The 128 bit type actually defines a pair of constants for each item listed above, with \code{hi} or \code{lo} appended to the name, indicating whether that mask applies to the most significant or least significant portion of the value.
+
+\noindent
+\begin{minipage}{\linewidth}
+\begin{singlespace}
+\begin{lstlisting}[caption=Floating-point field masks., label=listing:framework_masks]
+const uint32_t bias32 = 127;
+const uint32_t signMask32 = UINT32_C(0x80000000);
+const uint32_t exponentMask32 = UINT32_C(0x7f800000);
+const uint32_t fractionMask32 = UINT32_C(0x007fffff);
+const uint32_t nanTypeMask32 = UINT32_C(0x00400000);
+
+const uint64_t bias64 = 1023;
+const uint64_t signMask64 = UINT64_C(0x8000000000000000);
+const uint64_t exponentMask64 = UINT64_C(0x7ff0000000000000);
+const uint64_t fractionMask64 = UINT64_C(0x000fffffffffffff);
+const uint64_t nanTypeMask64 = UINT64_C(0x0008000000000000);
+
+const uint64_t bias128 = 16383;
+const uint64_t signMask128hi = UINT64_C(0x8000000000000000);
+const uint64_t signMask128lo = UINT64_C(0);
+const uint64_t exponentMask128hi = UINT64_C(0x7fff000000000000);
+const uint64_t exponentMask128lo = UINT64_C(0);
+const uint64_t fractionMask128hi = UINT64_C(0x0000ffffffffffff);
+const uint64_t fractionMask128lo = UINT64_C(0xffffffffffffffff);
+const uint64_t nanTypeMask128hi = UINT64_C(0x0000800000000000);
+const uint64_t nanTypeMask128lo = UINT64_C(0);
+\end{lstlisting}
+\end{singlespace}
+\end{minipage}
+
+\subsection{Floating-Point Type Functions}
+As discussed in Section~\ref{sec:challenges_identifying_types}, the C++ Standard Library has only recently added functionality to identify the various types of floating-point values. Therefore, the framework includes a selection of utility functions for identifying floating-point values. These functions are intended to be used with binary values within the framework, therefore all of them take the binary representation of the floating-point value as an integer parameter. The following functions are included, with overloads supplied for the each of the 32, 64, and 128 bit floating-point types:
+
+\begin{description}
+  \item[\code{isNeg()} :] Returns true if the value is negative, regardless of its type.
+  \item[\code{isDenormal()} :] Returns true if the value is a denormal number.
+  \item[\code{isNormal()} :] Returns true if the value is a normal number.
+  \item[\code{isZero()} :] Returns true if the value is either $+0$ or $-0$.
+  \item[\code{isPosZero()} :] Returns true only if the value is $+0$.
+  \item[\code{isNegZero()} :] Returns true only if the value is $-0$.
+  \item[\code{isInf()} :] Returns true if the value is either $+\infty$ or $-\infty$.
+  \item[\code{isPosInf()} :] Returns true only if the value is $+\infty$.
+  \item[\code{isNegInf()} :] Returns true only if the value is $-\infty$.
+  \item[\code{isNaN()} :] Returns true if the value is Not a Number. Does not distinguish between Quiet or Signaling NaN.
+\end{description}
+
+Listing~\ref{listing:framework_type_funcs} contains the prototypes for the included utility functions.
+
+\noindent
+\begin{minipage}{\linewidth}
+\begin{singlespace}
+\begin{lstlisting}[caption=Floating-point type utility functions., label=listing:framework_type_funcs]
+bool isNeg(const uint32_t v);
+bool isNeg(const uint64_t v);
+bool isNeg(const LongDouble v);
+
+bool isDenormal(const uint32_t v);
+bool isDenormal(const uint64_t v);
+bool isDenormal(const LongDouble v);
+
+bool isNormal(const uint32_t v);
+bool isNormal(const uint64_t v);
+bool isNormal(const LongDouble v);
+
+bool isZero(const uint32_t v);
+bool isZero(const uint64_t v);
+bool isZero(const LongDouble v);
+
+bool isPosZero(const uint32_t v);
+bool isPosZero(const uint64_t v);
+bool isPosZero(const LongDouble v);
+
+bool isNegZero(const uint32_t v);
+bool isNegZero(const uint64_t v);
+bool isNegZero(const LongDouble v);
+
+bool isInf(const uint32_t v);
+bool isInf(const uint64_t v);
+bool isInf(const LongDouble v);
+
+bool isPosInf(const uint32_t v);
+bool isPosInf(const uint64_t v);
+bool isPosInf(const LongDouble v);
+
+bool isNegInf(const uint32_t v);
+bool isNegInf(const uint64_t v);
+bool isNegInf(const LongDouble v);
+
+bool isNaN(const uint32_t v);
+bool isNaN(const uint64_t v);
+bool isNaN(const LongDouble v);
+\end{lstlisting}
+\end{singlespace}
+\end{minipage}
+
+\subsection{\code{LongDouble} Type}
+\code{long double} may vary in width from 64 to 128 bits, as discussed in Section~\ref{sec:challenges_ld_size}. At this time, integers larger than 64 bits are not commonly available. Therefore, the \code{LongDouble} union type shown in Listing~\ref{listing:framework_longdouble} is provided for ease of accessing the binary representation of a \code{long double} number, as well as converting a binary value back to a \code{long double} type. Within the framework, \code{LongDouble} is always used to encapsulate the pair of \code{uint64\_t} values that hold the binary representation of a \code{long double}. The individual bytes of the type are also accessible, if needed.
+
+Note that on big-endian systems, the integer \code{LongDouble::u64[0]} will refer to the most significant portion of the \code{long double} value, while on little-endian systems it will refer to the least significant portion of the value.
+
+\noindent
+\begin{minipage}{\linewidth}
+\begin{singlespace}
+\begin{lstlisting}[caption=The \code{LongDouble} type., label=listing:framework_longdouble]
+union LongDouble
+{
+    long double ld;
+    uint8_t u8[16];
+    uint64_t u64[2];
+};
+\end{lstlisting}
+\end{singlespace}
+\end{minipage}
+
+\subsection{System Endianness Identification}
+Ideally all endianness concerns would be delegated to the containing serialization library. However, as indicated in the previous section, when dealing with the binary representation of \code{long double} values it is necessary for the developer to be aware of the endianness of the current system. The framework provides a utility function, shown in Listing~\ref{listing:framework_endian}, to detect the endianness of the platform.
+
+\noindent
+\begin{minipage}{\linewidth}
+\begin{singlespace}
+\begin{lstlisting}[caption=The endianness identifier utility function., label=listing:framework_endian]
+bool isLittleEndian()
+{
+    union
+    {
+        uint16_t u16;
+        uint8_t u8[2];
+    } endian;
+
+    endian.u16 = 0x1234;
+    return endian.u8[0] == 0x34;
+}
+\end{lstlisting}
+\end{singlespace}
+\end{minipage}
+
+\subsection{\code{long double} Type Identifier.}
+As discussed in Section~\ref{sec:challenges_ld_size}, 10 byte \code{long double} values may be stored using 16 bytes of memory. The framework includes a utility function to address this issue, shown in Listing~\ref{listing:framework_ldtype}. This is an implementation of the algorithm from Listing~\ref{listing:10in16}.
+
+\noindent
+\begin{minipage}{\linewidth}
+\begin{singlespace}
+\begin{lstlisting}[caption=The \code{long double} type identifier utility function., label=listing:framework_ldtype]
+bool LDis10in16()
+{
+    if (sizeof(long double) != 16)
+        return false;
+
+    LongDouble ld = { -1.0L };
+    if (isLittleEndian())
+        return !(ld.u64[1] & signMask128hi);
+    else
+        return !(ld.u64[0] & signMask128hi);
+}
+\end{lstlisting}
+\end{singlespace}
+\end{minipage}
+
+\section{Integration With Boost the Serialization Library}
+\label{sec:framework_integration}
+The Boost Serialization Library, discussed in Section~\ref{sec:background_boost}, is the serialization library used for testing the framework in this thesis. The example \code{Archive} classes provided with the library are \code{portable\_binary\_oarchive}, used for serialization, and \code{portable\_binary\_iarchive}, used for de-serialization. In order to accommodate this floating-point framework, these classes were modified as follows:
+
+\begin{enumerate}
+  \item Addition of the floating-point interfaces.
+  \begin{enumerate}
+    \item A protected member was added to \code{portable\_binary\_oarchive}, which is used to hold an implementation of the \code{FP\_Serializer} interface.
+    \item A protected member was added to \code{portable\_binary\_iarchive}, which is used to hold an implementation of the \code{FP\_Deserializer} interface.
+  \end{enumerate}
+  
+  \item Each class was modified so that the methods that perform floating-point serialization function as described in Section~\ref{sec:framework_core}.
+\end{enumerate}
+
+Listing~\ref{listing:framework_boost_oarchive} and Listing~\ref{listing:framework_boost_iarchive} show the changes made to these classes.
+
+\noindent
+\begin{minipage}{\linewidth}
+\begin{singlespace}
+\begin{lstlisting}[caption=Modifications to the \code{portable\_binary\_oarchive} class., label=listing:framework_boost_oarchive]
+class portable_binary_oarchive
+{
+protected:
+    FP_Serializer& m_fp_serializer;    
+public:
+    void save(const float& t)
+    {
+        uint32_t v;
+        this->m_fp_serializer.convert(t, v);
+        this->primitive_base_t::save(v);
+    }
+    void save(const double& t)
+    {
+        uint64_t v;
+        this->m_fp_serializer.convert(t, v);
+        this->primitive_base_t::save(v);
+    }
+    void save(const long double& t)
+    {
+        LongDouble out;
+        this->m_fp_serializer.convert(t, out);
+        this->primitive_base_t::save(out.u64[0]);
+        this->primitive_base_t::save(out.u64[1]);
+    }
+};
+\end{lstlisting}
+\end{singlespace}
+\end{minipage}
+
+\noindent
+\begin{minipage}{\linewidth}
+\begin{singlespace}
+\begin{lstlisting}[caption=Modifications to the \code{portable\_binary\_iarchive} class., label=listing:framework_boost_iarchive]
+class portable_binary_iarchive
+{
+protected:
+    FP_Deserializer& m_fp_deserializer;    
+public:
+    void load(float& t){
+        uint32_t v;
+        this->primitive_base_t::load(v);
+        this->m_fp_deserializer.convert(v, t);
+    }    
+    void load(double& t){
+        uint64_t v;
+        this->primitive_base_t::load(v);
+        this->m_fp_deserializer.convert(v, t);
+    }    
+    void load(long double& t)
+    {
+        LongDouble in;
+        this->primitive_base_t::load(in.u64[0]);
+        this->primitive_base_t::load(in.u64[1]);
+        this->m_fp_deserializer.convert(in, t);
+    }
+};
+\end{lstlisting}
+\end{singlespace}
+\end{minipage}
+
+\section{Example Usage on IEEE-754 platforms}
+\label{sec:framework_example}
+To demonstrate the usage of this floating-point framework, an example implementation has been provided that operates on systems supporting IEEE-754. This implementation supports only true IEEE-754 platforms; specifically, platforms that use the x86 Extended Precision type (see Section~\ref{sec:challenges_x86_ext}) are not supported.
+
+Listing~\ref{listing:framework_ieee_serializer} shows the implementation of the \code{FP\_Serializer} interface. In this implementation, \code{float} and \code{double} types are both serialized directly, as their formats are already compliant with the requirements listed in Section~\ref{sec:framework_core}. \code{long double} types are modified to conform to the framework specifications by modifying the binary representation as described in Section~\ref{sec:challenges_ld_size}.
+
+\begin{singlespace}
+	\lstinputlisting[label=listing:framework_ieee_serializer, caption=The \code{IEEE754Serializer} class.]{code/ieee754serializer.h}
+\end{singlespace}
+
+Listing~\ref{listing:framework_ieee_deserializer} shows the implementation of the \code{FP\_Deserializer} interface. In this implementation, the binary values loaded for \code{float} and \code{double} types are converted directly to their respective floating-point types. \code{long double} values are modified as described in Section~\ref{sec:challenges_ld_size} to match the size of that type on the current platform.
+
+\begin{singlespace}
+	\lstinputlisting[label=listing:framework_ieee_deserializer, caption=The \code{IEEE754Deserializer} class.]{code/ieee754deserializer.h}
+\end{singlespace}

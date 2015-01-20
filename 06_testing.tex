@@ -1,0 +1,88 @@
+\chapter{Testing}
+\label{chap:testing}
+In order to show the viability of the framework presented in this thesis, a number of tests were performed on both the framework utilities and the framework itself. This section details the methodology used in those tests and their results.
+
+\section{Utilities}
+\label{sec:testing_utilities}
+The utility functions detailed in Section~\ref{sec:framework_utilities} were tested using several different methods.
+
+The functions \code{isLittleEndian()} and \code{LDis10in16()} were not considered viable for automated testing due to the nature of the information they retrieve. \code{isLittleEndian()} was used during the generation of the floating-point feature reports listed in Appendix~\ref{app:features}, and the output was compared against the known endianness of the processors used in those systems. \code{LDis10in16()} was run on the test systems and the results were manually compared to the \code{long double} values that were also generated as part of the feature reports.
+
+Unit tests were created for the floating-point type identification functions using the Boost Test Library\footnote{\url{http://www.boost.org/doc/libs/1_55_0/libs/test/doc/html/index.html}}. In each test case, at least one valid value was tested along with invalid values from all of the applicable floating-point types. Since all of the testing platforms used IEEE-754 as their native floating-point format, test values were cast directly to their binary representation from the \code{float} and \code{double} types. None of the available test platforms used the 128 bit \code{long double} format, so those version of the utility functions were not included in this test.
+
+Listing~\ref{listing:testing_isneg} demonstrates the test cases for the 32 and 64 bit versions of the \code{isNeg()} utility function. Each function is first tested with a valid negative value. It is then tested with a series of invalid values: a positive number, zero, infinity, and NaN.
+
+\noindent
+\begin{minipage}{\linewidth}
+\begin{singlespace}
+\begin{lstlisting}[caption=Testing the \code{isNeg()} function., label=listing:testing_isneg]
+#define BINARY_F(val) \
+    do { f = val; fb = *reinterpret_cast<uint32_t*>(&f); } while (0)
+
+#define BINARY_D(val) \
+    do { d = val; db = *reinterpret_cast<uint64_t*>(&d); } while (0)
+
+BOOST_AUTO_TEST_CASE(test_isNeg32)
+{
+    float f;
+    uint32_t fb;
+    
+    // valid values
+    BINARY_F(-1.0f);
+    BOOST_CHECK(isNeg(fb));
+    
+    // invalid values
+    BINARY_F(1.0f);
+    BOOST_CHECK(!isNeg(fb));
+    BINARY_F(0.0f);
+    BOOST_CHECK(!isNeg(fb));
+    BINARY_F(numeric_limits<float>::infinity());
+    BOOST_CHECK(!isNeg(fb));
+    BINARY_F(numeric_limits<float>::quiet_NaN());
+    BOOST_CHECK(!isNeg(fb));
+}
+
+BOOST_AUTO_TEST_CASE(test_isNeg64)
+{
+    double d;
+    uint64_t db;
+    
+    // valid values
+    BINARY_D(-1.0);
+    BOOST_CHECK(isNeg(db));
+    
+    // invalid values
+    BINARY_D(1.0);
+    BOOST_CHECK(!isNeg(db));
+    BINARY_D(0.0);
+    BOOST_CHECK(!isNeg(db));
+    BINARY_D(numeric_limits<double>::infinity());
+    BOOST_CHECK(!isNeg(db));
+    BINARY_D(numeric_limits<double>::quiet_NaN());
+    BOOST_CHECK(!isNeg(db));
+}
+\end{lstlisting}
+\end{singlespace}
+\end{minipage}
+
+\section{Framework Implementation}
+\label{sec:testing_framework}
+The IEEE-754 implementation of the framework, detailed in Section~\ref{sec:framework_example}, was tested on the systems listed in Appendix~\ref{app:features}. Listing~\ref{listing:testing_framework} shows a sample test program, in which a simple \code{struct} containing several floating-point numbers may be serialized or de-serialized. The serialization output was created using Windows, Linux, and Mac OS. Each file was then loaded on the other two platforms and the loaded values were compared to the original values, using both a debugger and standard output. Test programs on all platforms were compiled using version 1.55.0 of the Boost Libraries.
+
+\begin{singlespace}
+  \lstinputlisting[label=listing:testing_framework, caption=Testing the framework.]{code/test.cpp}
+\end{singlespace}
+
+\subsection{Boost Serialization Issues}
+Testing revealed several undocumented issues with the portability of files created using the example \code{portable\_binary\_archive} classes supplied with the Boost Serialization Library. These issues appear to be related to the internal versioning information used by the archive classes; there was no indication that they are directly related to the floating-point framework presented in this thesis. However, the issues are documented because they required manual modification of the serialization output so that testing could be completed.
+
+Initial testing found that files created on Linux platforms would load on Windows platforms, however, when attempting to open a file created on Windows using a Linux platform, the Boost Serialization Library would fail to open the file, throwing an exception indicating that the file version was unsupported. Examination of the two files using a hex editor revealed that the first 0x18 bytes of the files were identical. The first difference in the file occurred at offset 0x19; in the file created using Windows the byte at this offset contained the value 0x0B, while the file created on Linux had the value 0x0A. Editing the Windows file so that offset 0x19 had the value 0x0A allowed the file to be loaded on both Windows and Linux. This problem was consistent regardless of the actual data being serialized, therefore, all files created using Windows were manually edited to change the byte at offset 0x19 to the value 0x0A.
+
+A similar problem was discovered when attempting to load files created on Windows using Mac OS; loading of test files failed with an exception reporting an input stream error. The Windows file was compared to a file generated using Mac OS using a hex editor; however, a consistent fix for this problem was not found because the cause of the error could not be determined conclusively.
+
+\subsection{Testing Results}
+\code{float} and \code{double} values were found to de-serialize accurately on all tested platforms. This is expected, as all of the available test systems use IEEE-754 conforming \code{float} and \code{double} representations that did not require modification during serialization.
+
+\code{long double} values presented mixed results. \code{long double} values were successfully de-serialized on similar platforms. Test files created on Windows would de-serialize accurately on Windows, but would de-serialize inaccurately on Linux. Meanwhile, test files created using Linux or Mac OS would de-serialize accurately on those platforms, but would be inaccurate following de-serialization on Windows. It was at this time that additional research was conducted and the x86 Extended Precision format was discovered. It was determined that the explicit leading fraction bit used by that format was the cause of the inaccurate values, as described in Section~\ref{sec:challenges_x86_ext}. Additional attempts were made to modify the implementation to support this format seamlessly alongside the standard IEEE-754 format; however, this was unsuccessful. A separate implementation will be required for systems that use the x86 Extended Precision format.
+
+Ultimately, this testing demonstrates that the framework is conceptually sound. The successful serialization and de-serialization of these values, requires the conversion of the local floating-point format to the standardized format. De-serialization requires that the process be reversed. While this process could not be shown while moving between platforms due to the limitations described above, even serialization and de-serialization on the same platform involved a conversion that is fundamentally the same as the conversion used when de-serializing on another platform.

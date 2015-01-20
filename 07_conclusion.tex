@@ -1,0 +1,18 @@
+\chapter{Conclusion}
+\label{chap:conclusion}
+
+\section{Future Work}
+At this time, the IEEE-754 implementation is essentially complete for \code{float} and \code{double} values. Developers wishing to support cross-platform serialization of only those types may do so with minimal additional work. Support for \code{long double} values, however, is more complex.
+
+Two primary issues affect the serialization of \code{long double} values. First, the detection of 10 byte \code{long double} values that are stored in 16 bytes of memory is somewhat frail. The algorithm proposed in Section~\ref{sec:challenges_ld_size} and implemented in Section~\ref{sec:framework_utilities} relies on the assumption that these implementations to not use the most significant bit of the storage for implementation-specific information. All of the systems tested as part of this thesis did not use that bit; however, implementations are free to use this space for whatever purpose it wishes. By definition, the extra six bytes of the memory location are not part of the IEEE-754 standard. An alternative mechanism of detecting this format would make the framework more robust.
+
+The second issue is support for systems using the x86 Extended Precision format for \code{long double} values. Ideally a system should be implemented so that the usage of this type may be detected dynamically at runtime. The usage of this type is tied to the Intel x87 Hardware Floating-Point Unit. The x86 processor architecture provides the CPUID instruction, which may be used to query for the presence of an x87 FPU \cite{AMD:CPUID}. However, the physical presence of a FPU does not mean that the operating system and/or compiler has chosen to implement the x86 Extended Precision format. For example, a Lenovo X220 laptop was used to provide two of the testing platforms in this thesis. This laptop uses an Intel Core i7 Mobile processor, which includes an x87 FPU\footnote{\url{http://www.intel.com/content/www/us/en/processors/core/CoreTechnicalResources.html}}. When running the Windows operating system, \code{long double} is aliased to \code{double}; when using Linux, the x86 Extended Precision format is used. It seems unlikely that the CPUID instruction alone would be sufficient to detect this format, but perhaps that runtime information could be combined with compile time detection of common operating systems and compilers.
+
+Additional work also remains to be done by implementing the framework for platforms that do not use some form of the IEEE-754 standard.
+
+\section{Summary}
+The framework described in this thesis lays the groundwork that developers may use to allow for the serialization of floating-point numbers in a portable manner.
+
+Floating-point numbers that are serialized using this framework are saved to a standard format based on the IEEE-754 floating-point standard. This allows these values to be more easily converted into the format used by a specific target platform. Presented along with the framework is an implementation that supports serialization and de-serialization of floating-point numbers on platforms that support the IEEE-754 standard. In addition, numerous utility functions are provided to assist developers in creating additional implementations.
+
+The variations in floating-point format mean that compromises are inherit in any serialization system. This framework minimizes those compromises by avoiding loss of precision, unless it is required by the target system, as well as maintaining IEEE-754 special values throughout the serialization process.

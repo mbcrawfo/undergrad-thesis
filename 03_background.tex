@@ -1,0 +1,241 @@
+\chapter{Background}
+\label{chap:background}
+Before describing the proposed framework, it is necessary to provide some details regarding the usage of  floating-point within C++, the most common floating-point standard, and the Boost Serialization library.
+
+\section{Floating-Point in C++}
+\label{sec:background_cpp}
+The ISO C++11 Standard (3.9.1) \cite{ISO-C++11} lists the following requirements for floating-point types:
+
+\blockquote{
+  There are three \textit{floating point} types: \code{float}, \code{double}, and \code{long double}.  The type \code{double} provides at least as much precision as \code{float}, and the type \code{long double} provides at least as much precision as \code{double}.  The set of values of the type \code{float} is a subset of the set of values of the type \code{double}; the set of values of the type \code{double} is a subset of the set of values of the type \code{long double}.  The value representation of floating-point types is implementation-defined.
+}
+
+The standard does not define how floating point numbers shall be represented, leaving compiler implementers free to use any floating-point format they desire while maintaining conformance with the ISO standard.
+
+\section{The IEEE-754 Standard for Binary Floating-Point}
+\label{sec:background_ieee754}
+IEEE-754 is the most common floating-point format, and it is the de facto standard for floating-point on home computers.  Most modern CPUs include dedicated hardware for performing floating-point operations, such as the Intel 80x87 series of math co-processors. Typically this dedicated floating-point hardware implements the IEEE-754 standard \cite{Intel:80C187}, which specifies the binary format of floating-point numbers as well as the semantics of floating-point operations. Processors that lack dedicated hardware often implement floating-point using software libraries, which may also conform to the IEEE-754 standard. The most notable exceptions are VAX and Cray computers, whose processors typically use a proprietary floating-point format \cite{Obiltschnig:06}.
+
+\subsection{Floating-Point Types}
+\label{subsec:ieee_fp_types}
+IEEE-754 defines three floating point types \cite{IEEE-754-1985} that are used in order to implement the types required by ISO C++.
+
+\begin{description}
+	\item[Single Precision:]
+		A 32 bit type that is used as the C++ \code{float}.
+	\item[Double Precision:]
+		A 64 bit type that is used as the C++ \code{double}.
+	\item[Extended Double Precision:]
+		A type used as \code{long double} that is implementation-defined, but must meet certain minimum requirements laid out by the standard in order to provide a greater level of precision than the Double Precision format. \code{long double} is most commonly implemented as a type with a width of either 80 or 128 bits.  If the platform does not implement an Extended Precision type, then \code{long double} is an alias for \code{double}.
+\end{description}
+
+Unless otherwise specified in this document, \code{float} will refer to the IEEE-754 Single Precision type, \code{double} will refer to the IEEE-754 Double Precision type, and \code{long double} will refer to the 80 bit Extended Double Precision type.
+
+\subsection{Floating-Point Format}
+\label{subsec:fp_format}
+All of the floating-point types share a common layout in memory. The number is divided into three fields, whose size may vary depending on the specific floating-point type being implemented. The three fields within the number are the sign, the exponent, and the fraction. Figure~\ref{figure:fp_layout} demonstrates the memory layout.
+
+\begin{figure}
+  \setlength{\unitlength}{1mm}
+  \centering
+  \begin{picture}(124,16)
+  	\put(2,4){\framebox(12,8){Sign}}
+  	\put(14,4){\framebox(40,8)[4,4]{Exponent}}
+  	\put(54,4){\framebox(70,8)[4,4]{Fraction}}
+  	\put(0,14){\scriptsize{MSB}}
+  	\put(120.5,14){\scriptsize{LSB}}
+  	\put(5,0){\scriptsize{\textit{N}-1}}
+  	\put(15,0){\scriptsize{\textit{f}+\textit{e}-1}}
+  	\put(51,0){\scriptsize{\textit{f}}}
+  	\put(56,0){\scriptsize{\textit{f}-1}}
+  	\put(122,0){\scriptsize{0}}
+  \end{picture}
+  \caption{The memory layout of a \code{float}.}
+  \label{figure:fp_layout}
+\end{figure}
+
+The following terminology is used when referring to the fields of a floating-point number, and is common to all types of floating-point values:
+
+\begin{description}
+	\item[Number of Bits ($N$):]
+		The total size of the type in bits.
+	\item[Sign Bit ($S$):]
+		The most significant bit of each type is used to encode the sign of the value. $S=0$ represents a positive value, while $S=1$ represents a negative value.
+	\item[Exponent ($E$):]
+		A signed integer exponent that modifies the magnitude of the number. For each type, valid exponent values are in the range $[E_{Min}, E_{Max}]$. $E_{Min} - 1$ and $E_{Max} + 1$ are both reserved to implement special values.
+	\item[Exponent Bits ($e$):]
+		The number of bits that are used to encode the exponent.
+  \item[Bias ($b$):]
+    A constant that is combined with the exponent to transform it into a non-negative integer. The bias for a type may be calculated as $b = 2^{e-1} - 1$.
+  \item[Biased Exponent ($E_{b}$):]
+    The unsigned integer exponent value that is actually encoded in the exponent field of the floating-point number. The biased exponent is calculated as $E_{b} = E + b$.
+	\item[Fraction Bits ($f$):]
+		The number of bits used to encode the fractional part of the value.
+	\item[Fraction ($F$):]
+		A binary string consisting of $f$ digits that determines the precision of the number being represented. If the value does not require $f$ digits, the fraction is right-padded with zeros until it contains $f$ digits. The fraction may also be referred to as the significand, or the mantissa.
+	\item[Value ($V$):]
+		The decimal value represented by the floating-point number. How the value is computed is dependent on the type being represented.
+\end{description}
+
+Many of the fields have values that are constant for each floating-point type; these values are listed in Table~\ref{table:fp_types} \cite{Goldberg:91}.
+
+\begin{table}
+  \centering
+  \caption{Common implementations of floating point types.}
+  \label{table:fp_types}
+  \begin{tabular}{|l|l|l|l|l|l|l|l|}
+    \hline
+    \textbf{Type}               & $N$ & $e$ & $b$   & $E_{Min}$ & $E_{Max}$ & $f$ \\
+    \hline
+    \code{float}                & 32  & 8   & 127   & -126      & +127      & 23  \\
+    \hline
+    \code{double}               & 64  & 11  & 1023  & -1022     & +1023     & 52  \\
+    \hline
+    \code{long double}          & 80  & 15  & 16383 & -16382    & +16383    & 64  \\
+    \hline
+    \code{long double}          & 128 & 15  & 16383 & -16382    & +16383    & 112 \\
+    \hline
+  \end{tabular}
+\end{table}
+
+\subsection{Floating-Point Values}
+\label{subsec:fp_values}
+In order to provide maximum flexibility in representing a wide range of values as well as the ability to handle edge cases during computations, IEEE-754 defines four different types of floating-point values.
+
+\subsubsection{Normal Numbers}
+\label{subsubsec:normal_nums}
+Normal numbers are the most commonly used floating-point values, representing most real numbers. Normal numbers modify the following field terminology:
+
+\begin{description}
+	\item[Fraction ($F$):]
+		In order to provide additional precision, the fraction of a normal number is implied to have a leading one. When encoding a normal number, an appropriate exponent must be computed so that the fraction's leading digit is one. This digit is then dropped from the fraction string, and is not encoded into the fraction field of the number.
+	\item[Value ($V$):] The value of a normal number may be calculated as ${V = (-1)^{S} \cdot(1.F)_{2} \cdot 2^{E}}$.
+\end{description}
+
+For example, the first six digits of $\pi$ (3.14159) maybe encoded as a \code{float} in the form $(-1)^{0} \cdot 1.1001001000011111101_{2} \cdot 2^{1}$. The values used to form the \code{float} are $S=0$, $E_{b}=128$, and $F=10010010000111111010000$, as shown in Figure~\ref{figure:pi_example}.
+
+\begin{figure}
+	\centering
+	\floatimage{0}{10000000}{10010010000111111010000}
+  \caption{The binary representation of $\pi$ as a \code{float}.}
+  \label{figure:pi_example}
+\end{figure}
+
+\subsubsection{Denormal Numbers}
+\label{subsubsec:denormal}
+In some situations, a floating-point operation may yield a result that is not zero, but is smaller than the smallest possible normal number. Since it is undesirable to have an unexpected divide-by-zero or a situation where, for example, $a - b == 0$ even though $a \neq b$, IEEE-754 implements the concept of gradual underflow using denormal numbers to represent these very small values.
+
+Additionally, normal numbers are not capable of representing zero due to the implied leading one of the fraction field, so zero must be represented as a denormal number. This means that both $+0$ and $-0$ are distinct floating-point numbers. However, the IEEE-754 standard does dictate that $+0 == -0$ always evaluates as true.
+
+Denormal numbers modify the following field terminology:
+
+\begin{description}
+	\item[Exponent ($E$):]
+		The exponent of a denormal number is fixed, and is always $E_{Min} - 1$. This corresponds to a biased exponent of zero.
+	\item[Fraction ($F$):]
+		The fraction of a denormal number does not have an implied leading digit. Alternatively, it may be considered to have an implied leading zero.
+	\item[Value ($V$):]
+		The value of a denormal number may be calculated as $V = (-1)^{S} \cdot (0.F)_{2} \cdot 2^{E_{Min} - 1}$.
+\end{description}
+
+Figure~\ref{figure:denormal} illustrates the layout of a denormal number.
+
+\begin{figure}
+	\centering
+	\floatimage{$S$}{00000000}{FFFFFFFFFFFFFFFFFFFFFFF}
+  \caption{The binary representation of denormal \code{float} values.}
+  \label{figure:denormal}
+\end{figure}
+
+\subsubsection{Infinity}
+\label{subsubsec:infinity}
+IEEE-754 requires that computations continue, even if the result of an operation has a magnitude greater than that which can be represented by the floating-point type as a normal value. Infinity is used to represent these overflow values. Infinity values modify the following field terminology:
+
+\begin{description}
+	\item[Exponent ($E$):]
+		The exponent of an infinity value is fixed, and is always $E_{Max} + 1$. This corresponds to a biased exponent in which all bits of the exponent field are set to one.
+	\item[Fraction ($F$):]
+		The fraction field of an infinity value is fixed, and consists of all zeros.
+	\item[Value ($V$):]
+		No computation is necessary for an infinity value, as the only portion of the value which varies is the sign bit in order to distinguish $+\infty$ and $-\infty$.
+\end{description}
+
+Figure~\ref{figure:infinity} shows the layout of an infinity value. The result of IEEE-754 operations that involve infinity sometimes produce results different than what one would expect based on standard mathematical operations. Table~\ref{table:infinity_ops} lists the results of some common operations using infinity \cite{Obiltschnig:06}.
+
+\begin{figure}
+	\centering
+	\floatimage{$S$}{11111111}{00000000000000000000000}
+  \caption{The binary representation of $\infty$ as a \code{float}.}
+  \label{figure:infinity}
+\end{figure}
+
+\begin{table}
+	\centering
+ 	\caption{Operations involving $\infty$.}
+  \label{table:infinity_ops}
+	\begin{tabular}{|l|l|}
+		\hline
+		\textbf{Operation}          & \textbf{Result}  \\
+		\hline
+		$x / \pm\infty$             & 0                \\
+		\hline
+		$\pm\infty \cdot \pm\infty$ & $\pm\infty$      \\
+		\hline
+		$x / 0 : x \neq 0$          & $\pm\infty$      \\
+		\hline
+		$\pm 0 / \pm 0$             & NaN              \\
+		\hline
+		$\infty + \infty$           & $\infty$         \\
+		\hline
+		$\infty - \infty$           & NaN              \\
+		\hline
+		$\pm \infty / \pm \infty$   & NaN              \\
+		\hline
+		$\pm \infty \cdot 0$        & NaN              \\
+		\hline
+	\end{tabular}
+\end{table}
+
+\subsubsection{Not a Number}
+\label{subsubsec:nan}
+As with infinity values, Not a Number (NaN) is implemented by IEEE-754 in order to allow computations to continue in the case of exceptional conditions such as divide by zero or $\sqrt{x} : x<0$ by defining an ``invalid number'' value that may be used as the result. Additionally, the standard defines two types of NaN: Quiet NaN (QNaN) and Signaling NaN (SNaN). When a SNaN value is used in an arithmetic operation an exception is signaled, while a QNaN used in an arithmetic operation allows computations to continue without interruption. NaN values modify the following field terminology:
+
+\begin{description}
+	\item[Sign Bit ($S$):]
+		The sign bit of a NaN value is ignored; that is, there is no distinction between +NaN and -NaN.
+	\item[Exponent ($E$):]
+		The exponent of a NaN value is fixed, and is always $E_{Max} + 1$. This corresponds to a biased exponent in which all bits of the exponent field are set to one.
+	\item[Fraction ($F$):]
+		The fraction field of a NaN must be non-zero. The fraction field is also used to distinguish between quiet and signaling NaN values. The original IEEE-754-1985 standard specified that QNaN and SNaN values were implementation-defined, however the IEEE-754-2008 \cite{IEEE-754-2008} revision of the standard requires that the most significant digit of the fraction field be used to determine QNaN (1) or SNaN (0). The remaining bits of the fraction may still be used for implementation-specific data, such as details about the type of the exception that caused the NaN to be generated.
+	\item[Value ($V$):]
+		No computation is necessary for a NaN value.
+\end{description}
+
+Figure~\ref{figure:nan} shows the layout of NaN types.
+
+\begin{figure}
+	\centering
+	\floatimage{$S$}{11111111}{TFFFFFFFFFFFFFFFFFFFFFF}
+  \caption{The binary representation of NaN as a \code{float}.}
+  \label{figure:nan}
+\end{figure}
+
+\section{The Boost Serialization Library}
+\label{sec:background_boost}
+The Boost C++ Libraries \cite{boost} are a collection of portable, open-source, peer-reviewed libraries that extend the features and functionality of the C++ language. Many of the founders of Boost are members of the C++ Standards Committee, and numerous Boost libraries have been incorporated into ISO C++ either as the basis for new language features or as part of the C++ Standard Library. The Boost Libraries are free for both commercial and non-commercial use. The contributors and maintainers of Boost attempt to hold submitted libraries to high standards so that they are suitable for eventual standardization. As of this writing the current stable release of Boost, version 1.55.0, includes more than 100 libraries.
+
+The Boost Serialization Library\footnote{\url{http://www.boost.org/doc/libs/1_55_0/libs/serialization/doc/index.html}} is designed to allow a developer to easily deconstruct an object into a sequence of bytes, to store those bytes in some manner, and to later reconstruct an equivalent object using the stored bytes. The library intends to maintain portability while depending only on ISO C++ and while taking advantage of modern C++ features to improve simplicity and easy of use. Included in the library is support for the serialization of built-in C++ primitive types as well as data structures from the C++ Standard Library.
+
+Boost.Serialization uses an \code{Archive} concept to determine how an object is rendered as a byte sequence. \code{Archive} classes must implement a standardized interface, allowing a class to have a single serialization method that is compatible with any compliant \code{Archive}. For example, a developer may wish to use a text-based \code{Archive} to produce a human readable output file that allows for easier testing and debugging, while changing to a binary output format when better performance is needed. Such a change only requires the developer to modify the instantiation of the output \code{Archive}; the actual serialization code within their classes need not be changed.
+
+Listing \ref{listing:serial_example} provides a simple demonstration of the library's usage. Two classes implement serialization, \code{Position} and \code{Person}. Both classes use the simplest option provided by the library, with a single template \code{serialize()} method to perform both saving and loading of objects. The \code{Archive} template parameter allows the method to work with any compatible \code{Archive} type. \code{Archive} classes overload the bitwise-and operator (\code{\&}) to save objects to the \code{Archive}, or extract them from an \code{Archive}. Any member objects that support serialization may seamlessly use the same operator, as shown when the \code{Person} class serializes its \code{Position} member.
+
+By default the library includes \code{Archive} classes that allow for serialized data to be stored in files as plain text, XML, or binary data. Users may add their own \code{Archive} implementations if desired. Although the binary \code{Archive} that is included with Boost.Serialization does not produce portable files, the library does provide an example \code{Archive} for producing portable binary files; however, this \code{Archive} is considered incomplete. While it does handle some portability issues such as endianness, the \code{Archive} does not reliably serialize floating-point types in a portable manner, which is the most significant obstacle to completion of a truly portable serialization system\footnote{\url{http://www.boost.org/doc/libs/1_55_0/libs/serialization/doc/todo.html#portablebinaryarchives}}.
+
+\newpage
+\noindent
+\begin{minipage}{\linewidth}
+\begin{singlespace}
+	\lstinputlisting[label=listing:serial_example, caption=An example usage of Boost.Serialization.]{code/boost_serial_example.cpp}
+\end{singlespace}
+\end{minipage}

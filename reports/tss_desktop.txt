@@ -1,0 +1,50 @@
+TSS Lenovo ThinkCentre
+Windows 8 x64
+Intel Core2 Quad Q9400
+
+Endianness: little
+
+Feature report for float:
+Size (bits): 32
+IEEE-754: true
+Sample value of pi (3.14159265358979323846):
+        0x40490fdb
+Epsilon: 1.19209e-007
+Denormal: present
+Rounding style: towards nearest
+Has infinity: true
+Infinity: 0x7f800000
+Has QNaN: true
+QNaN: 0x7fc00000
+Has SNaN: true
+SNaN: 0x7f800001
+
+Feature report for double:
+Size (bits): 64
+IEEE-754: true
+Sample value of pi (3.14159265358979323846):
+        0x400921fb54442d18
+Epsilon: 2.22045e-016
+Denormal: present
+Rounding style: towards nearest
+Has infinity: true
+Infinity: 0x7ff0000000000000
+Has QNaN: true
+QNaN: 0x7ff8000000000000
+Has SNaN: true
+SNaN: 0x7ff0000000000001
+
+Feature report for long double:
+Size (bits): 64
+IEEE-754: true
+Sample value of pi (3.14159265358979323846):
+        0x400921fb54442d18
+Epsilon: 2.22045e-016
+Denormal: present
+Rounding style: towards nearest
+Has infinity: true
+Infinity: 0x7ff0000000000000
+Has QNaN: true
+QNaN: 0x7ff8000000000000
+Has SNaN: true
+SNaN: 0x7ff0000000000001

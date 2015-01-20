@@ -1,0 +1,50 @@
+student.cs.appstate.edu
+Red Hat Enterprise 6.5
+AMD Opteron 8222 SE
+
+Endianness: little
+
+Feature report for f:
+Size (bits): 32
+IEEE-754: true
+Sample value of pi (3.14159265358979323846):
+        0x40490fdb
+Epsilon: 1.19209e-07
+Denormal: present
+Rounding style: towards nearest
+Has infinity: true
+Infinity: 0x7f800000
+Has QNaN: true
+QNaN: 0x7fc00000
+Has SNaN: true
+SNaN: 0x7fa00000
+
+Feature report for d:
+Size (bits): 64
+IEEE-754: true
+Sample value of pi (3.14159265358979323846):
+        0x400921fb54442d18
+Epsilon: 2.22045e-16
+Denormal: present
+Rounding style: towards nearest
+Has infinity: true
+Infinity: 0x7ff0000000000000
+Has QNaN: true
+QNaN: 0x7ff8000000000000
+Has SNaN: true
+SNaN: 0x7ff4000000000000
+
+Feature report for e:
+Size (bits): 128
+IEEE-754: true
+Sample value of pi (3.14159265358979323846):
+        0x0000000000004000c90fdaa22168c235
+Epsilon: 1.0842e-19
+Denormal: present
+Rounding style: towards nearest
+Has infinity: true
+Infinity: 0x0000003a31897fff8000000000000000
+Has QNaN: true
+QNaN: 0x0000003a27867fffc000000000000000
+Has SNaN: true
+SNaN: 0x0000003a31af7fffa000000000000000
